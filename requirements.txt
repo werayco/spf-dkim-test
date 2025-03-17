@@ -1,0 +1,4 @@
+dnspython
+pyfiglet
+dmarc
+dkimpy
