@@ -2,3 +2,4 @@ dnspython
 pyfiglet
 dmarc
 dkimpy
+pyspf
