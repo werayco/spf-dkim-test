@@ -5,6 +5,8 @@ import tempfile
 import email
 import re
 import ipaddress
+from email.utils import parseaddr
+
 
 def extract_valid_ips(file_path, public_only=True):
     with open(file_path, 'rb') as f:
