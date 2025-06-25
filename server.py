@@ -40,7 +40,7 @@ uploaded_file = st.file_uploader("upload .eml email File", type=["eml"])
 envelope_sender = st.text_input("✉️ Envelope Sender (MAIL FROM)", placeholder="e.g., sender@example.com")
 
 if st.button("🔍 Validate Email Security"):
-    if not uploaded_file or not ip_address or not envelope_sender:
+    if not uploaded_file or not envelope_sender:
         st.error("Please provide all inputs.")
     else:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".eml") as tmp_file:
