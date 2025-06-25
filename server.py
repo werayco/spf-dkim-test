@@ -2,6 +2,29 @@ import streamlit as st
 from utils import security  # assuming your class is in security.py
 import os
 import tempfile
+import email
+import re
+import ipaddress
+
+def extract_valid_ips(file_path, public_only=True):
+    with open(file_path, 'rb') as f:
+        raw_email = f.read()
+
+    msg = email.message_from_bytes(raw_email)
+    received_headers = msg.get_all("Received", [])
+    ip_candidate_pattern = r'(?:(?:\d{1,3}\.){3}\d{1,3})|(?:[a-fA-F0-9:]+:+)+[a-fA-F0-9]+'
+
+    valid_ips = []
+    for header in received_headers:
+        candidates = re.findall(ip_candidate_pattern, header)
+        for ip in candidates:
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+                if not public_only or ip_obj.is_global:
+                    valid_ips.append(str(ip_obj))
+            except ValueError:
+                continue 
+    return list(set(valid_ips)) 
 
 st.set_page_config(page_title="Email Security Validator", layout="centered")
 
@@ -14,8 +37,6 @@ This tool will validate SPF, DKIM, and DMARC records accordingly.
 
 uploaded_file = st.file_uploader("upload .eml email File", type=["eml"])
 
-
-ip_address = st.text_input("IP Address (Mail Server)", placeholder="e.g., 198.51.100.1")
 envelope_sender = st.text_input("✉️ Envelope Sender (MAIL FROM)", placeholder="e.g., sender@example.com")
 
 if st.button("🔍 Validate Email Security"):
@@ -28,7 +49,7 @@ if st.button("🔍 Validate Email Security"):
 
         # Perform checks
         st.subheader("🔒 Results")
-
+        ip_address = extract_valid_ips(file_path=tmp_path)[0]
         spf_result = security.spfer(envelope_sender, ip_address)
         st.write(f"**SPF Check:** {spf_result}")
 
