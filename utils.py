@@ -59,12 +59,12 @@ class security:
         from_addr = email.utils.parseaddr(msg.get("From", ""))[1]
         from_domain = from_addr.split("@")[-1].lower() if "@" in from_addr else ""
         if not from_domain:
-            return "FAIL (invalid From domain)"
+            return {"result": "FAIL", "reason": "Invalid From domain"}
 
         spf_result = security.spfer(mail_from, ip)
         spf_domain = mail_from.split("@")[-1].lower()
-        
-        # Default to relaxed alignment
+
+        # Default DMARC values
         aspf_mode = "r"
         adkim_mode = "r"
         policy = "none"
@@ -80,17 +80,15 @@ class security:
                 elif part.startswith("adkim="):
                     adkim_mode = part.split("=")[1].strip().lower()
 
-        # SPF alignment check
-        if aspf_mode == "s": #
+        # SPF alignment
+        if aspf_mode == "s":
             spf_aligned = spf_domain == from_domain
-        else:  # relaxed
+        else:
             spf_aligned = spf_domain == from_domain or spf_domain.endswith("." + from_domain)
 
         # DKIM result and alignment
-        # Assuming this returns a tuple: ("PASS", "signed_domain.com")
         dkim_result, dkim_domain = security.verify_dkim(file_path)
         dkim_domain = dkim_domain.lower() if dkim_domain else ""
-
         if dkim_result == "PASS":
             if adkim_mode == "s":
                 dkim_aligned = dkim_domain == from_domain
@@ -99,10 +97,37 @@ class security:
         else:
             dkim_aligned = False
 
-        # Final DMARC pass decision
-        dmarc_pass = (
-            (spf_result == "PASS" and spf_aligned)
-            or (dkim_result == "PASS" and dkim_aligned)
+        # DMARC logic
+        passed = (
+            (spf_result == "PASS" and spf_aligned) or
+            (dkim_result == "PASS" and dkim_aligned)
         )
 
-        return "PASS" if dmarc_pass else f"FAIL ({policy})"
+        reason = []
+        if spf_result != "PASS":
+            reason.append("SPF failed")
+        elif not spf_aligned:
+            reason.append("SPF not aligned")
+        if dkim_result != "PASS":
+            reason.append("DKIM failed")
+        elif not dkim_aligned:
+            reason.append("DKIM not aligned")
+
+        return {
+            "result": "PASS" if passed else "FAIL",
+            "reason": "; ".join(reason) if reason else "All passed",
+            "policy": {
+                "domain": from_domain,
+                "p": policy,
+                "aspf": aspf_mode,
+                "adkim": adkim_mode
+            },
+            "alignment": {
+                "spf_aligned": spf_aligned,
+                "dkim_aligned": dkim_aligned
+            },
+            "auth": {
+                "spf": spf_result,
+                "dkim": dkim_result
+            }
+        }
