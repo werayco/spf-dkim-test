@@ -127,8 +127,3 @@ class SPFResolver:
             return {"ip":ip, "domain":root_domain, "spf_status":result}
     
 
-
-if __name__ == "__main__":
-    file_path = r"C:\Users\miztu\Downloads\Graphic Designer at SyncPath Consulting Limited and 12 more graphic designer jobs in Lagos for you!.eml"
-    result =SPFResolver.soemail_spf(file_path)
-    print(result)
