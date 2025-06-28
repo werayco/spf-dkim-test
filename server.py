@@ -6,7 +6,7 @@ import email
 import re
 import ipaddress
 from email.utils import parseaddr
-
+from soemail_spf import SPFResolver
 
 def extract_valid_ips(file_path, public_only=True):
     with open(file_path, 'rb') as f:
@@ -54,7 +54,7 @@ if st.button("🔍 Validate Email Security"):
 
         st.subheader("🔒 Results")
         ip_address, email_address = extract_valid_ips(file_path=tmp_path)
-        spf_result = security.spfer(email_address, ip_address)
+        spf_result = SPFResolver.soemail_spf(tmp_path)
         st.write(f"**SPF Check:** {spf_result}")
 
         dkim_result = security.verify_dkim(tmp_path)
