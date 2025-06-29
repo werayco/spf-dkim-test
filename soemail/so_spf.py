@@ -1,7 +1,7 @@
 import dns.resolver
 import ipaddress
 import re
-from typing import Dict, List, Tuple, Set, Optional, Union
+from typing import Dict, List, Tuple, Set, Optional
 import email
 from email import policy
 from email.parser import BytesParser
@@ -9,11 +9,9 @@ from email.utils import parseaddr
 import spf
 import time
 
-
 resolver = dns.resolver.Resolver()
 resolver.nameservers = ["8.8.8.8", "1.1.1.1", "9.9.9.9"]
-
-resolver.timeout = 3.0  # seconds
+resolver.timeout = 3.0
 resolver.lifetime = 5.0
 
 class SPFResolver:
@@ -82,16 +80,19 @@ class SPFResolver:
                 if ip_obj in block:
                     return "PASS"
         return "FAIL"
-    
 
     @staticmethod
-    def extract_sender_domain_from_eml(file_path: str):
+    def extract_sender_domain_from_eml(file_path: str) -> Optional[Tuple[str, str, str]]:
         with open(file_path, 'rb') as f:
             msg = BytesParser(policy=policy.default).parse(f)
-            from_header = msg.get("From", "")
-            _, email_addr = parseaddr(from_header)
-        spf_headers = msg.get_all('Received-SPF')
+
+        from_header = msg.get("From", "")
+        _, email_addr = parseaddr(from_header)
+
         sender_domain = None
+
+        # 1. Received-SPF header
+        spf_headers = msg.get_all('Received-SPF')
         if spf_headers:
             for spf_header in spf_headers:
                 match = re.search(r'domain of .*?@([^\s;]+)', spf_header)
@@ -99,20 +100,51 @@ class SPFResolver:
                     sender_domain = match.group(1)
                     break
 
-        received_headers = msg.get_all('Received', [])
+        # 2. Return-Path fallback
+        if not sender_domain:
+            return_path = msg.get("Return-Path")
+            if return_path:
+                _, return_email = parseaddr(return_path)
+                if return_email and "@" in return_email:
+                    sender_domain = return_email.split("@")[1]
+
+        # 3. From fallback
+        if not sender_domain and email_addr and "@" in email_addr:
+            sender_domain = email_addr.split("@")[1]
+
         sender_ip = None
+
+        # 1. From Received headers
+        received_headers = msg.get_all('Received', [])
         for header in received_headers:
             ip_match = re.search(r'\[([0-9]{1,3}(?:\.[0-9]{1,3}){3})\]', header)
             if ip_match:
                 sender_ip = ip_match.group(1)
                 break
 
+        # 2. X-Originating-IP
+        if not sender_ip:
+            xoip = msg.get("X-Originating-IP")
+            if xoip:
+                ip_match = re.search(r'\[?([0-9]{1,3}(?:\.[0-9]{1,3}){3})\]?', xoip)
+                if ip_match:
+                    sender_ip = ip_match.group(1)
+
+        # 3. X-Forwarded-For
+        if not sender_ip:
+            xff = msg.get("X-Forwarded-For")
+            if xff:
+                ip_match = re.search(r'([0-9]{1,3}(?:\.[0-9]{1,3}){3})', xff)
+                if ip_match:
+                    sender_ip = ip_match.group(1)
+
         if sender_domain and sender_ip:
-            return sender_domain, sender_ip, email_addr
+            return sender_domain.strip(), sender_ip.strip(), email_addr.strip()
+
         return None
-    
+
     @staticmethod
-    def spfer(email: str, ip: str, retries=3, delay=1):
+    def spfer(email: str, ip: str, retries=5, delay=3):
         try:
             for attempt in range(retries):
                 helo = email.split("@")[1]
@@ -121,43 +153,47 @@ class SPFResolver:
                     return result.upper(), explanation
                 print(f"Retry {attempt + 1} due to TEMPERROR...")
                 time.sleep(delay)
+            return "TEMPERROR", "Retries exhausted"
         except Exception as e:
-            return "PERMERROR"
-    
+            return "PERMERROR", str(e)
+
     @staticmethod
     def soemail_spf(file_path):
+        extracted = SPFResolver.extract_sender_domain_from_eml(file_path)
+        if extracted is None:
+            return {
+                "ip": None,
+                "domain": None,
+                "spf_status": "NONE",
+                "error": "Could not extract sender domain or IP from email headers"
+            }
+
+        root_domain, ip, email = extracted
+
         try:
-            root_domain, ip, email  = SPFResolver.extract_sender_domain_from_eml(file_path)
             records = SPFResolver.resolve_all_includes(root_domain)
             result = SPFResolver.check_ip_against_spf_blocks(ip, records)
+
             if result == "FAIL":
-                print(f"custom spf checker failed, moving to pyspf")
-                email = SPFResolver.extract_valid_ips(file_path=file_path)
+                print("Custom SPF checker failed, moving to pyspf")
                 pyspf_result, _ = SPFResolver.spfer(email=email, ip=ip)
-                return {"ip":ip, "domain":root_domain, "spf_status":pyspf_result}
+                return {"ip": ip, "domain": root_domain, "spf_status": pyspf_result, "email_address": email}
             else:
-                print(f"using custom made spf checker")
-                return {"ip":ip, "domain":root_domain, "spf_status":result}
+                print("Using custom SPF checker")
+                return {"ip": ip, "domain": root_domain, "spf_status": result, "email_address": email}
+
         except Exception as e:
-                return {"ip":ip, "domain":root_domain, "spf_status":"NONE"}
-        
-    @staticmethod 
-    def extract_valid_ips(file_path, public_only=True):
-        with open(file_path, 'rb') as f:
-            raw_email = f.read()
-
-        msg = email.message_from_bytes(raw_email)
-        from_header = msg.get("From", "")
-        _, email_addr = parseaddr(from_header)
-        return  email_addr
-
-
+            return {
+                "ip": ip,
+                "domain": root_domain,
+                "spf_status": "ERROR",
+                "error": str(e)
+            }
+ 
 if __name__ == "__main__":
+    file_path = r"C:\Users\miztu\Downloads\Activate your Wattpad account.eml"
     # file_path = r"C:\Users\miztu\Downloads\Graphic Designer at SyncPath Consulting Limited and 12 more graphic designer jobs in Lagos for you!.eml"
-    file_path = r"C:\Users\miztu\Downloads\💥 Find opportunities_ DappRadar's Gambling Narrative Page.eml"
-    x = SPFResolver.soemail_spf(file_path)
-    print(x)
-    # y, ex= SPFResolver.spfer("alert@indeed.com", ip="156.70.53.8")
-    # gh = SPFResolver.get_spf_record("indeed.com")
-    # print(gh)
+
+    result = SPFResolver.soemail_spf(file_path).get("spf_status")
+    print(result)
 

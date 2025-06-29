@@ -6,9 +6,12 @@ import email
 import re
 import ipaddress
 from email.utils import parseaddr
-from soemail_spf import SPFResolver
+from soemail.dmarc_dkim import security
+from soemail.so_spf import SPFResolver
 
-def extract_valid_ips(file_path, public_only=True):
+# from soemail_spf import SPFResolver
+
+def extract_valid_ips(file_path):
     with open(file_path, 'rb') as f:
         raw_email = f.read()
 
@@ -16,21 +19,7 @@ def extract_valid_ips(file_path, public_only=True):
     from_header = msg.get("From", "")
     name, email_addr = parseaddr(from_header)
 
-    msg = email.message_from_bytes(raw_email)
-    received_headers = msg.get_all("Received", [])
-    ip_candidate_pattern = r'(?:(?:\d{1,3}\.){3}\d{1,3})|(?:[a-fA-F0-9:]+:+)+[a-fA-F0-9]+'
-
-    valid_ips = []
-    for header in received_headers:
-        candidates = re.findall(ip_candidate_pattern, header)
-        for ip in candidates:
-            try:
-                ip_obj = ipaddress.ip_address(ip)
-                if not public_only or ip_obj.is_global:
-                    valid_ips.append(str(ip_obj))
-            except ValueError:
-                continue 
-    return list(set(valid_ips))[0], email_addr
+    return  email_addr
 
 st.set_page_config(page_title="Email Security Validator", layout="centered")
 
@@ -53,14 +42,14 @@ if st.button("🔍 Validate Email Security"):
             tmp_path = tmp_file.name
 
         st.subheader("🔒 Results")
-        ip_address, email_address = extract_valid_ips(file_path=tmp_path)
-        spf_result = SPFResolver.soemail_spf(tmp_path)
-        st.write(f"**SPF Check:** {spf_result}")
+        result = SPFResolver.soemail_spf(tmp_path)
+        st.write(f"**SPF Check:** {result}")
 
-        dkim_result = security.verify_dkim(tmp_path)
+        dkim_result, _ = security.verify_dkim(tmp_path)
         st.write(f"**DKIM Check:** {dkim_result}")
 
-        dmarc_result = security.dmarc_validate(tmp_path, ip_address, email_address)
+        dmarc_result = security.dmarc_validate(tmp_path, result.get('ip'), result.get('email_address'), spfResult=result.get('spf_status'))
+
         st.write(f"**DMARC Check:** {dmarc_result}")
 
         # Cleanup

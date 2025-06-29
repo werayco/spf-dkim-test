@@ -3,7 +3,7 @@ import dkim
 import dns.resolver
 import email
 import email.utils
-from today import SPFResolver
+from .so_spf import SPFResolver
 
 class security:
     @staticmethod
@@ -42,7 +42,7 @@ class security:
             return None
 
     @staticmethod
-    def dmarc_validate(file_path, ip, mail_from):
+    def dmarc_validate(file_path, ip, mail_from, spfResult: str):
         with open(file_path, "rb") as f:
             raw = f.read()
         msg = email.message_from_bytes(raw)
@@ -53,7 +53,8 @@ class security:
             return {"result": "FAIL", "reason": "Invalid From domain"}
 
         # spf_result = security.spfer(mail_from, ip)
-        spf_result = SPFResolver.soemail_spf(file_path).get("spf_status")
+        # spf_result = SPFResolver.soemail_spf(file_path).get("spf_status")
+        spf_result = spfResult
         spf_domain = mail_from.split("@")[-1].lower()
 
         # Default DMARC values
@@ -123,3 +124,4 @@ class security:
                 "dkim": dkim_result
             }
         }
+
