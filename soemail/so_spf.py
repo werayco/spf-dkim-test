@@ -191,7 +191,7 @@ class SPFResolver:
             }
  
 if __name__ == "__main__":
-    file_path = r"C:\Users\miztu\Downloads\Activate your Wattpad account.eml"
+    file_path = r"C:\Users\miztu\Downloads\💥 Find opportunities_ DappRadar's Gambling Narrative Page.eml"
     # file_path = r"C:\Users\miztu\Downloads\Graphic Designer at SyncPath Consulting Limited and 12 more graphic designer jobs in Lagos for you!.eml"
 
     result = SPFResolver.soemail_spf(file_path).get("spf_status")

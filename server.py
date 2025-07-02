@@ -46,7 +46,11 @@ if st.button("🔍 Validate Email Security"):
         st.write(f"**SPF Check:** {result}")
 
         dkim_result, _ = security.verify_dkim(tmp_path)
+        summary, signatures_count, signatures_info = security.parse_dkim_dates(tmp_path)
+        st.write(f"***Number of DKIM signature found:*** {signatures_count}")
+        st.write(f"**Details:** {signatures_info}")
         st.write(f"**DKIM Check:** {dkim_result}")
+
 
         dmarc_result = security.dmarc_validate(tmp_path, result.get('ip'), result.get('email_address'), spfResult=result.get('spf_status'))
 
